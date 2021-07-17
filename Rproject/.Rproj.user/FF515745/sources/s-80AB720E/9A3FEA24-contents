@@ -1,0 +1,213 @@
+#!/usr/bin/env Rscript
+args = commandArgs(trailingOnly=TRUE)
+
+
+reformat<-function(data){
+  thred=2
+  for (k in 1:length(data[,1])){
+    for (j in 1:length(data[1,])){
+     # print(data[k,j])
+      if (data[k,j]> thred){
+        data[k,j]=thred
+      }
+      if (data[k,j]< -thred){
+        data[k,j]=-thred
+      }
+    }
+  }
+  return(data)
+}
+mkdir<-function(f){
+  dir.create(file.path(f), showWarnings = FALSE)
+}
+
+
+library(ggplot2)
+library(RColorBrewer)
+library(viridis)
+
+cancer=args[1]
+current_dir= args[2]
+exp_dir_prefix= args[3]
+output_dir=args[4]
+setwd(current_dir)
+
+cell_type=c('exhaustion','mem','eff')
+for (cell in cell_type) {
+pathway=paste0(exp_dir_prefix,cell,sep='')
+heatmap_name=paste0(cell,"_marker heterogeneity",sep='')
+width = 6
+heigth = 3
+outdir = output_dir
+mkdir(outdir)
+prefix = 'heatmap'
+color_conditions = c("#fecc5c","#f03b20","#bd0026")
+f = paste0(pathway,"/heatmap_data.txt.",cancer)
+table_r = read.table(f,sep='\t',header=T,row.names=NULL)
+#rownames(table)=table[,1]
+table = t(table_r)
+
+table = table[2:length(table[,1]),]
+
+head(table[1:2,1:5])
+
+data=table
+#data=scale(data)
+m = paste0(pathway,"/allmarkers_var.txt")
+marker=read.table(m,sep='\t',header=T,row.names=NULL)
+marker
+rownames(data) <- marker[,1]
+#marker=marker[marker[,2]>0.09,]
+marker
+length(marker[,1])
+#data=data[marker[,1],]
+head(data[1:2,1:5])
+
+library(ComplexHeatmap)
+library(circlize)
+library(gplots)
+library(scales)
+
+
+#table[,1]=factor(table[,1],levels=c('Extremely_High',"UQ_90","UQ_75",'D low'))
+
+#ha_column = HeatmapAnnotation(
+ # df = data.frame(Category = table[,1]),
+ # col = list(Category = c("Extremely_High" =  "#a50f15", "UQ_90" = "#fb6a4a","UQ_75" = "#fcbba1","D low" = "#006d2c")))
+class(data) <- "numeric"
+data=t(data)
+data=scale(data)
+data=t(data)
+data[is.na(data)] <- 0
+data=reformat(data)
+dim(data)
+head(data[1:2,1:5])
+
+splits=c()
+for (k in 1:10){
+  splits=c(splits,k*6)
+}
+splits
+coln=8
+col="deepskyblue2"
+max(data)
+min(data)
+f2=colorRamp2(seq(min(data),max(data),length = coln), colorpanel(coln,"black","grey","yellow"), space = "RGB") 
+df = data.frame(D_value = c(rep("Low", 5), rep("High", 5)))
+#ha = HeatmapAnnotation(df, 
+ # col = list(D_value = c("Low" = "cyan4", "High" = "red")))
+#df = data.frame(Response = c(rep("NR", NR), rep("R", R)))
+#ha_row = rowAnnotation(df, 
+ # col = list(Response = c("NR" = "red", "R" = "cyan4")),width = unit(0.25, "cm"))
+
+#lgd = Legend(labels = rows_1, title = "high_var")
+row_ha = rowAnnotation(std = marker[,2], bar = anno_barplot(marker[,2],gp = gpar(fill = marker[,2], fontsize=6)))
+
+fh = function(x) fastcluster::hclust(dist(x))
+
+library(ComplexHeatmap)
+
+ht1 = Heatmap(data, 
+  row_km = 2,
+  col = f2, 
+  cluster_rows = fh,
+  #cluster_rows = TRUE,
+  show_column_names = FALSE,
+  show_column_dend = FALSE,
+  right_annotation = row_ha,
+  row_names_gp = gpar(fontsize = 5)
+  #row_order = order(as.numeric(sort(marker[,2])))
+  )
+
+
+width = 10
+heigth = 4
+#outdir = 'plots/'
+prefix = heatmap_name
+pdf(file.path(outdir, paste0(prefix,"_",col, "complexheatmap.pdf")), w = width, h = heigth)
+draw(ht1,heatmap_legend_side = "right")
+dev.off()  
+print (paste0("data dimension ",dim(data)))
+#hc = Heatmap(mat, name = "mat", row_split = 2)
+o1 = row_order(ht1)
+
+
+selected_markers=o1$'1'+1
+
+marker_select=marker[o1$'1',]
+data_select=table_r[,selected_markers]
+#data_select=t(data_select)
+#data_select_t=t(data_select)
+prefix = heatmap_name
+print (head(data_select))
+print (o1$'1')
+fw=paste0(f,'.','1','.selected.txt')
+write.table(data_select,fw,sep=' ',quote=F, col.names = F)
+fw=paste0(m,'.','1','.scc.selected.txt')
+write.table(marker_select,fw,sep='\t',quote=F)
+
+selected_markers=o1$'2'+1
+marker_select=marker[o1$'2',]
+data_select=table_r[,selected_markers]
+#data_select=t(data_select)
+#data_select_t=t(data_select)
+prefix = heatmap_name
+print (head(data_select))
+print (o1$'2')
+fw=paste0(f,'.','2','.selected.txt')
+write.table(data_select,fw,sep=' ',quote=F, col.names = F)
+#fw=paste0("../CD8_spea2/",cell,'2','.spea2.txt')
+#write.table(data_select,fw,sep=' ',quote=F, col.names = F)
+fw=paste0(m,'.','2','.scc.selected.txt')
+write.table(marker_select,fw,sep='\t',quote=F)
+
+# #print(row_dend)
+# selected_markers=o1$'3'+1
+# marker_select=marker[o1$'3',]
+# data_select=table_r[,selected_markers]
+# #data_select=t(data_select)
+# #data_select_t=t(data_select)
+# prefix = heatmap_name
+# print (head(data_select))
+# print (o1$'3')
+# fw=paste0(f,'.','3','.selected.txt')
+# write.table(data_select,fw,sep=' ',quote=F, col.names = F)
+# fw=paste0("../CD8_spea2/",cell,'3','.spea2.txt')
+# write.table(data_select,fw,sep=' ',quote=F, col.names = F)
+# fw=paste0(m,'.','3','.selected.txt')
+# write.table(marker_select,fw,sep='\t',quote=F)
+
+fw=paste0(m,'.','2','.scc.selected.txt')
+anno_m=read.table(fw,sep='\t',header=T,row.names=1)
+row_ha = rowAnnotation(std = marker[,2], bar = anno_barplot(marker[,2],gp = gpar(fill = marker[,2], fontsize=6)))
+print(dim(anno_m))
+loc=rownames(anno_m)
+class(loc)="numeric"
+ha=rowAnnotation(markers = anno_mark(at = loc,
+    labels = anno_m[,1],
+    extend = unit(10, "mm")
+    ))
+ht1 = Heatmap(data, 
+  row_km = 2,
+  col = f2, 
+  cluster_rows = TRUE,
+  show_row_names = F,
+  show_column_names = FALSE,
+  show_column_dend = FALSE,
+  left_annotation = row_ha,
+  right_annotation = ha,
+  row_names_gp = gpar(fontsize = 5))
+  #row_order = order(as.numeric(sort(marker[,2]))))
+
+
+width = 7
+heigth = 3
+#outdir = 'plots/'
+prefix = heatmap_name
+pdf(file.path(outdir, paste0(prefix,"_",col, "complexheatmap.withonlycluter2.pdf")), w = width, h = heigth)
+draw(ht1,heatmap_legend_side = "right")
+dev.off()  
+print (paste0("data dimension",dim(data)))
+
+
+}
